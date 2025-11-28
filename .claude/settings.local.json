@@ -4,7 +4,8 @@
       "Bash(brew list:*)",
       "Bash(pkg-config:*)",
       "Bash(brew search:*)",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(sdl2-config:*)"
     ],
     "deny": [],
     "ask": []

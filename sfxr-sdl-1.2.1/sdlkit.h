@@ -25,7 +25,8 @@ typedef Uint16 WORD;
 
 #define Sleep(x) SDL_Delay(x)
 
-static bool keys[SDLK_LAST];
+// SDL2: Use SDL_NUM_SCANCODES instead of SDLK_LAST
+static bool keys[SDL_NUM_SCANCODES];
 
 void ddkInit();      // Will be called on startup
 bool ddkCalcFrame(); // Will be called every frame, return true to continue running or false to quit
@@ -37,10 +38,11 @@ public:
 	~DPInput() {}
 	static void Update () {}
 
-	static bool KeyPressed(SDLKey key)
+	static bool KeyPressed(SDL_Keycode key)
 	{
-		bool r = keys[key];
-		keys[key] = false;
+		SDL_Scancode scancode = SDL_GetScancodeFromKey(key);
+		bool r = keys[scancode];
+		keys[scancode] = false;
 		return r;
 	}
 
@@ -53,13 +55,17 @@ static int mouse_x, mouse_y, mouse_px, mouse_py;
 static bool mouse_left = false, mouse_right = false, mouse_middle = false;
 static bool mouse_leftclick = false, mouse_rightclick = false, mouse_middleclick = false;
 
+// SDL2: Use window, renderer, and texture instead of surface
+static SDL_Window *sdlwindow = NULL;
+static SDL_Renderer *sdlrenderer = NULL;
+static SDL_Texture *sdltexture = NULL;
 static SDL_Surface *sdlscreen = NULL;
 
 static void sdlupdate ()
 {
 	mouse_px = mouse_x;
 	mouse_py = mouse_y;
-	Uint8 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
+	Uint32 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
 	bool mouse_left_p = mouse_left;
 	bool mouse_right_p = mouse_right;
 	bool mouse_middle_p = mouse_middle;
@@ -77,117 +83,84 @@ static bool ddkLock ()
 	ddkpitch = sdlscreen->pitch / (sdlscreen->format->BitsPerPixel == 32 ? 4 : 2);
 	ddkscreen16 = (Uint16*)(sdlscreen->pixels);
 	ddkscreen32 = (Uint32*)(sdlscreen->pixels);
+	return true;
 }
 
 static void ddkUnlock ()
 {
 	SDL_UnlockSurface(sdlscreen);
+	// Update texture with the surface data
+	SDL_UpdateTexture(sdltexture, NULL, sdlscreen->pixels, sdlscreen->pitch);
+	// Clear renderer
+	SDL_RenderClear(sdlrenderer);
+	// Copy texture to renderer
+	SDL_RenderCopy(sdlrenderer, sdltexture, NULL, NULL);
+	// Present renderer
+	SDL_RenderPresent(sdlrenderer);
 }
 
 static void ddkSetMode (int width, int height, int bpp, int refreshrate, int fullscreen, const char *title)
 {
-	VERIFY(sdlscreen = SDL_SetVideoMode(width, height, bpp, fullscreen ? SDL_FULLSCREEN : 0));
-	SDL_WM_SetCaption(title, title);
+	// Create window
+	Uint32 flags = fullscreen ? SDL_WINDOW_FULLSCREEN : 0;
+	sdlwindow = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+	                              width, height, flags);
+	VERIFY(sdlwindow);
+
+	// Create renderer
+	sdlrenderer = SDL_CreateRenderer(sdlwindow, -1, SDL_RENDERER_ACCELERATED);
+	VERIFY(sdlrenderer);
+
+	// Create a surface for drawing (compatible with old code)
+	Uint32 pixelFormat = (bpp == 32) ? SDL_PIXELFORMAT_ARGB8888 : SDL_PIXELFORMAT_RGB565;
+	sdlscreen = SDL_CreateRGBSurfaceWithFormat(0, width, height, bpp, pixelFormat);
+	VERIFY(sdlscreen);
+
+	// Create texture
+	sdltexture = SDL_CreateTexture(sdlrenderer, pixelFormat, SDL_TEXTUREACCESS_STREAMING, width, height);
+	VERIFY(sdltexture);
 }
 
-#include <gtk/gtk.h>
-#include <string.h>
-#include <malloc.h>
-
-#if GTK_CHECK_VERSION(3,0,0)
-
-
+// Simple file dialog implementation using stdin/stdout for macOS
+// This avoids GTK+ dependency
 static bool load_file (char *fname)
 {
-	char *fn;
-
-	GtkWidget *dialog = gtk_file_chooser_dialog_new("Load a file!",
-	                                                NULL,
-	                                                GTK_FILE_CHOOSER_ACTION_OPEN,
-	                                                GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-	                                                GTK_STOCK_OPEN, GTK_RESPONSE_ACCEPT,
-	                                                NULL
-	                                                );
-
-	if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-		fn = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-		strncpy(fname, fn, 255);
-		g_free(fn);
-
-		fname[255] = 0;
+	printf("Enter filename to load: ");
+	fflush(stdout);
+	if (fgets(fname, 256, stdin)) {
+		// Remove trailing newline
+		size_t len = strlen(fname);
+		if (len > 0 && fname[len-1] == '\n')
+			fname[len-1] = '\0';
+		return strlen(fname) > 0;
 	}
-
-	gtk_widget_destroy(dialog);
-
-	while (gtk_events_pending ()) gtk_main_iteration ();
-
-	return true;
+	return false;
 }
 
 static bool save_file (char *fname)
 {
-	char *fn;
-
-	GtkWidget *dialog = gtk_file_chooser_dialog_new("Save a file!",
-	                                                NULL,
-	                                                GTK_FILE_CHOOSER_ACTION_SAVE,
-	                                                GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-	                                                GTK_STOCK_SAVE, GTK_RESPONSE_ACCEPT,
-	                                                NULL
-	                                                );
-
-	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(dialog), TRUE);
-
-	if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
-		fn = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
-		strncpy(fname, fn, 255);
-		g_free(fn);
-
-		fname[255] = 0;
+	printf("Enter filename to save: ");
+	fflush(stdout);
+	if (fgets(fname, 256, stdin)) {
+		// Remove trailing newline
+		size_t len = strlen(fname);
+		if (len > 0 && fname[len-1] == '\n')
+			fname[len-1] = '\0';
+		return strlen(fname) > 0;
 	}
-
-	gtk_widget_destroy(dialog);
-
-	while (gtk_events_pending ()) gtk_main_iteration ();
-
-	return true;
+	return false;
 }
 
 #define FileSelectorLoad(x,file,y) load_file(file)
 #define FileSelectorSave(x,file,y) save_file(file)
 
-#else // gtk+-2.0
-
-static char *gtkfilename;
-
-static void selected_file (GtkWidget *button, GtkFileSelection *fs)
-{
-	strncpy(gtkfilename, gtk_file_selection_get_filename(fs), 255);
-	gtkfilename[255] = 0;
-	gtk_widget_destroy(GTK_WIDGET(fs));
-	gtk_main_quit();
-}
-
-static bool select_file (char *buf)
-{
-	gtkfilename = buf;
-	GtkWidget *dialog = gtk_file_selection_new("Let's file selection time, for enjoy!");
-	g_signal_connect(G_OBJECT(dialog), "destroy", G_CALLBACK(gtk_main_quit), NULL);
-	g_signal_connect(G_OBJECT(GTK_FILE_SELECTION(dialog)->ok_button), "clicked", G_CALLBACK(selected_file), G_OBJECT(dialog));
-	g_signal_connect_swapped(G_OBJECT(GTK_FILE_SELECTION(dialog)->cancel_button), "clicked", G_CALLBACK(gtk_widget_destroy), G_OBJECT(dialog));
-	gtk_widget_show(GTK_WIDGET(dialog));
-	gtk_main();
-	return *gtkfilename;
-}
-
-#define FileSelectorLoad(x,file,y) select_file(file)
-#define FileSelectorSave(x,file,y) select_file(file)
-
-#endif
-
 static void sdlquit ()
 {
 	ddkFree();
+	if (sdltexture) SDL_DestroyTexture(sdltexture);
+	if (sdlscreen) SDL_FreeSurface(sdlscreen);
+	if (sdlrenderer) SDL_DestroyRenderer(sdlrenderer);
+	if (sdlwindow) SDL_DestroyWindow(sdlwindow);
 	SDL_Quit();
 }
 
@@ -195,14 +168,19 @@ static void sdlinit ()
 {
 	SDL_Surface *icon;
 	VERIFY(!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO));
-	icon = SDL_LoadBMP("/usr/share/sfxr/sfxr.bmp");
-	if (!icon)
-		icon = SDL_LoadBMP("sfxr.bmp");
+
+	// Try to load icon from current directory (remove hardcoded path)
+	icon = SDL_LoadBMP("sfxr.bmp");
 	if (icon)
-		SDL_WM_SetIcon(icon, NULL);
+		SDL_SetWindowIcon(sdlwindow, icon);
+
 	atexit(sdlquit);
 	memset(keys, 0, sizeof(keys));
 	ddkInit();
+
+	// Set icon after window is created
+	if (icon && sdlwindow)
+		SDL_SetWindowIcon(sdlwindow, icon);
 }
 
 static void loop (void)
@@ -210,14 +188,15 @@ static void loop (void)
 	SDL_Event e;
 	while (true)
 	{
-		if (SDL_PollEvent(&e)) {
+		while (SDL_PollEvent(&e)) {
 			switch (e.type) {
 				case SDL_QUIT:
 					return;
-	
+
 				case SDL_KEYDOWN:
-					keys[e.key.keysym.sym] = true;
-	
+					keys[e.key.keysym.scancode] = true;
+					break;
+
 				default: break;
 			}
 		}
@@ -226,14 +205,11 @@ static void loop (void)
 
 		if (!ddkCalcFrame())
 			return;
-
-		SDL_Flip(sdlscreen);
 	}
 }
 
 int main (int argc, char *argv[])
 {
-	gtk_init(&argc, &argv);
 	sdlinit();
 	loop();
 	return 0;
