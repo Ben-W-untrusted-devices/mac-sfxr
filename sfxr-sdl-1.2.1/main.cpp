@@ -15,12 +15,14 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <string.h>
 #ifdef WIN32
 #include "DPInput.h" // WIN32
 #include "pa/portaudio.h"
 #include "fileselector.h" // WIN32
 #else
 #include "SDL.h"
+#include <mach-o/dyld.h>
 #endif
 
 #define rnd(n) (rand()%(n+1))
@@ -1126,23 +1128,43 @@ void ddkInit()
 
 	ddkSetMode(640,480, 32, 60, DDK_WINDOW, "sfxr"); // requests window size etc from ddrawkit
 
-	if (LoadTGA(font, "/usr/share/sfxr/font.tga")) {
-        	/* Try again in cwd */
+	// Get the directory where the executable is located
+	char exe_path[1024];
+	char font_path[1024];
+	char ld48_path[1024];
+	uint32_t size = sizeof(exe_path);
+	if (_NSGetExecutablePath(exe_path, &size) == 0) {
+		// Find the last slash to get directory
+		char *last_slash = strrchr(exe_path, '/');
+		if (last_slash) {
+			*last_slash = '\0';
+			snprintf(font_path, sizeof(font_path), "%s/font.tga", exe_path);
+			snprintf(ld48_path, sizeof(ld48_path), "%s/ld48.tga", exe_path);
+		}
+	} else {
+		strcpy(font_path, "font.tga");
+		strcpy(ld48_path, "ld48.tga");
+	}
+
+	if (LoadTGA(font, font_path)) {
+		// Try fallback locations
 		if (LoadTGA(font, "font.tga")) {
-			fprintf(stderr,
-				"Error could not open /usr/share/sfxr/font.tga"
-				" nor font.tga\n");
-			exit(1);
+			if (LoadTGA(font, "/usr/share/sfxr/font.tga")) {
+				fprintf(stderr,
+					"Error could not open font.tga in executable directory, cwd, or /usr/share/sfxr/\n");
+				exit(1);
+			}
 		}
 	}
 
-	if (LoadTGA(ld48, "/usr/share/sfxr/ld48.tga")) {
-        	/* Try again in cwd */
+	if (LoadTGA(ld48, ld48_path)) {
+		// Try fallback locations
 		if (LoadTGA(ld48, "ld48.tga")) {
-			fprintf(stderr,
-				"Error could not open /usr/share/sfxr/ld48.tga"
-				" nor ld48.tga\n");
-			exit(1);
+			if (LoadTGA(ld48, "/usr/share/sfxr/ld48.tga")) {
+				fprintf(stderr,
+					"Error could not open ld48.tga in executable directory, cwd, or /usr/share/sfxr/\n");
+				exit(1);
+			}
 		}
 	}
 
