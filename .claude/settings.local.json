@@ -7,7 +7,9 @@
       "Bash(git init:*)",
       "Bash(sdl2-config:*)",
       "Bash(make clean:*)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Bash(find:*)",
+      "Bash(./sfxr)"
     ],
     "deny": [],
     "ask": []
