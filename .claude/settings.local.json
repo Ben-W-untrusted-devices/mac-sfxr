@@ -5,7 +5,9 @@
       "Bash(pkg-config:*)",
       "Bash(brew search:*)",
       "Bash(git init:*)",
-      "Bash(sdl2-config:*)"
+      "Bash(sdl2-config:*)",
+      "Bash(make clean:*)",
+      "Bash(make:*)"
     ],
     "deny": [],
     "ask": []

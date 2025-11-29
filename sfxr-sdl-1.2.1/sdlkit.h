@@ -121,34 +121,17 @@ static void ddkSetMode (int width, int height, int bpp, int refreshrate, int ful
 	VERIFY(sdltexture);
 }
 
-// Simple file dialog implementation using stdin/stdout for macOS
-// This avoids GTK+ dependency
+// Native macOS file dialogs
+#include "macos_dialogs.h"
+
 static bool load_file (char *fname)
 {
-	printf("Enter filename to load: ");
-	fflush(stdout);
-	if (fgets(fname, 256, stdin)) {
-		// Remove trailing newline
-		size_t len = strlen(fname);
-		if (len > 0 && fname[len-1] == '\n')
-			fname[len-1] = '\0';
-		return strlen(fname) > 0;
-	}
-	return false;
+	return macos_open_file_dialog(fname, 256) != 0;
 }
 
 static bool save_file (char *fname)
 {
-	printf("Enter filename to save: ");
-	fflush(stdout);
-	if (fgets(fname, 256, stdin)) {
-		// Remove trailing newline
-		size_t len = strlen(fname);
-		if (len > 0 && fname[len-1] == '\n')
-			fname[len-1] = '\0';
-		return strlen(fname) > 0;
-	}
-	return false;
+	return macos_save_file_dialog(fname, 256) != 0;
 }
 
 #define FileSelectorLoad(x,file,y) load_file(file)
